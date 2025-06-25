@@ -13,12 +13,12 @@ float DSY_SDRAM_BSS buf[MAX_SIZE];
 
 #define CHORUS 0      // 	DONE
 #define OVERDRIVE 1   //    DONE, kinda finicky though
-#define DELAY 2       // needs complete redo!
+#define DELAY 2       // 	DONE, good enough
 #define TREMOLO 3     // 	DONE, maybe could be tuned though
 #define FLANGER 4     // 	DONE
 #define AUTOWAH 5     // 	DONE
-#define EQUALIZER 6   // test this?
-#define DRUMS 7       // test tone ane metro
+#define EQUALIZER 6   //    DONE, good enpugh
+#define DRUMS 7       //    DONE
 
 DaisySeed hw;
 Led led1;
@@ -44,6 +44,8 @@ Svf eq4;
 Metro metro;
 AnalogBassDrum drum;
 
+float sample_rate;
+float delay_feedback;
 float p1, p2, p3, p4, p5, p6;
 float q1, q2, q3, q4, q5, q6;
 float pq_wiggle = 0.05f;
@@ -65,6 +67,7 @@ void updateLed1()
 		led1.Set(1.0f);
 	else
 		led1.Set(0.0f);
+	
 	led1.Update();
 }
 
@@ -87,43 +90,65 @@ void updateActiveEffect()
 	updateLed1();
 }
 
-// TODO! this needs to match all the other stuff
 void initFirstEffect()
 {
 	switch (activeEffect) {
 		case CHORUS:
-			chorus.SetLfoDepth(p1);
-			chorus.SetLfoFreq(p2 * 2.0f);
-			chorus.SetDelay(p3);
+			if (fabs(q1 - p1) > pq_wiggle) chorus.SetLfoDepth(p1);
+			if (fabs(q2 - p2) > pq_wiggle) chorus.SetLfoFreq(p2 * 2.0f);
+			if (fabs(q3 - p3) > pq_wiggle) chorus.SetDelay(p3);
+			if (fabs(q4 - p4) > pq_wiggle) effects[CHORUS].second = (p4 * 1.5f) + 0.5f;
 			break;
-		
+
 		case OVERDRIVE:
-			overdrive.SetDrive(p1);
+			if (fabs(q1 - p1) > pq_wiggle) overdrive.SetDrive(p1);
+			if (fabs(q4 - p4) > pq_wiggle) effects[OVERDRIVE].second = (p4 * 1.5f) + 0.5f;
 			break;
 
 		case FLANGER:
-			flanger.SetLfoDepth(p1);
-			flanger.SetLfoFreq(p2);
+			if (fabs(q1 - p1) > pq_wiggle) flanger.SetLfoDepth(p1);
+			if (fabs(q2 - p2) > pq_wiggle) flanger.SetLfoFreq(p2);
+			if (fabs(q4 - p4) > pq_wiggle) effects[FLANGER].second = (p4 * 1.5f) + 0.5f;
 			break;
 
 		case DELAY:
-			delay.SetDelay(p1);
+			if (fabs(q1 - p1) > pq_wiggle) delay.SetDelay(sample_rate * p1);
+			if (fabs(q2 - p2) > pq_wiggle) delay_feedback = p2;
+			if (fabs(q4 - p4) > pq_wiggle) effects[DELAY].second = (p4 * 1.5f) + 0.5f;
 			break;
 
 		case AUTOWAH:
-			autowah.SetWah(p1);
-			autowah.SetDryWet(p2 * 100.0f);
-			autowah.SetLevel(p3);
+			if (fabs(q1 - p1) > pq_wiggle) autowah.SetWah(p1);
+			if (fabs(q2 - p2) > pq_wiggle) autowah.SetDryWet(p2 * 100.0f);
+			if (fabs(q3 - p3) > pq_wiggle) autowah.SetLevel(p3);
+			if (fabs(q4 - p4) > pq_wiggle) effects[AUTOWAH].second = (p4 * 1.5f) + 0.5f;
 			break;
 
 		case TREMOLO:
-			tremolo.SetFreq(p1 * 5.0f);
-			tremolo.SetDepth(p2);
-			if (p3 < 0.25f) tremolo.SetWaveform(0); // SINE
-			else if (p3 < 0.5f) tremolo.SetWaveform(4); // SQUARE
-			else if (p3 < 0.75f) tremolo.SetWaveform(3); // RAMP
-			else tremolo.SetWaveform(2); // SAW
+			if (fabs(q1 - p1) > pq_wiggle) tremolo.SetFreq(p1 * 5.0f);
+			if (fabs(q2 - p2) > pq_wiggle) tremolo.SetDepth(p2);
+			if (fabs(q3 - p3) > pq_wiggle) {
+				if (p3 < 0.33f) tremolo.SetWaveform(0); // SINE
+				else if (p3 < 0.67) tremolo.SetWaveform(4); // SQUARE
+				else tremolo.SetWaveform(2); // SAW
+			}
+			if (fabs(q4 - p4) > pq_wiggle) effects[TREMOLO].second = (p4 * 1.5f) + 0.5f;
 			break;
+
+		case EQUALIZER:
+			if (fabs(q1 - p1) > pq_wiggle) eq1_boost = p1 + 0.5f;
+			if (fabs(q2 - p2) > pq_wiggle) eq2_boost = p2 + 0.5f;
+			if (fabs(q3 - p3) > pq_wiggle) eq3_boost = p3 + 0.5f;
+			if (fabs(q4 - p4) > pq_wiggle) eq4_boost = p4 + 0.5f;
+			break;
+
+		case DRUMS:
+			if (fabs(q1 - p1) > pq_wiggle) drum.SetFreq((75.0f * p1) + 25.0f);
+			if (fabs(q2 - p2) > pq_wiggle) drum.SetTone(p2);
+			if (fabs(q3 - p3) > pq_wiggle) drum.SetDecay(p3);
+			if (fabs(q4 - p4) > pq_wiggle) effects[DRUMS].second = (p4 * 1.5f) + 0.5f;
+			break;
+		
 	}
 }
 
@@ -215,7 +240,9 @@ void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, s
 			break;
 
 		case DELAY:
-			delay.SetDelay(p1);
+			if (fabs(q1 - p1) > pq_wiggle) delay.SetDelay(sample_rate * p1);
+			if (fabs(q2 - p2) > pq_wiggle) delay_feedback = p2;
+			if (fabs(q4 - p4) > pq_wiggle) effects[DELAY].second = (p4 * 1.5f) + 0.5f;
 			break;
 
 		case AUTOWAH:
@@ -277,7 +304,7 @@ void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, s
 		{
 			delay_out = delay.Read();
 			sig_out = sig + delay_out;
-			feedback = (delay_out * 0.1) + sig;
+			feedback = (delay_out * delay_feedback) + sig;
 			delay.Write(feedback);
 			sig = sig_out;
 		}
@@ -289,7 +316,7 @@ void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, s
 
 		if (effects[AUTOWAH].first)
 		{
-			sig = autowah.Process(sig);
+			sig = autowah.Process(sig *= effects[AUTOWAH].second);
 		}
 
 		if (effects[TREMOLO].first)
@@ -326,10 +353,10 @@ int main(void)
 	hw.SetAudioBlockSize(4);
 	hw.SetAudioSampleRate(SaiHandle::Config::SampleRate::SAI_48KHZ);
 	hw.SetLed(false); // this doesn't seem to work?
-	float sample_rate = hw.AudioSampleRate();
+	sample_rate = hw.AudioSampleRate();
 
-	// TODO switch up the language, active means turned on,
-	// need some other word for selected effect
+	// TODO maybe switch up the language, active means turned on,
+	// need some other word for "selected effect"
 
 	// {KEY: {is_active?, fx_gain}}
 	effects = {
@@ -360,15 +387,8 @@ int main(void)
 	sw4.Init(hw.GetPin(7), 0.f, daisy::Switch::TYPE_TOGGLE, daisy::Switch::POLARITY_NORMAL, daisy::Switch::PULL_UP); // physical pin 8
 
 	chorus.Init(sample_rate);
-    // chorus.SetLfoFreq(0.0f);
-    // chorus.SetLfoDepth(0.f);
-    // chorus.SetDelay(0.f);
-	
 	overdrive.Init();
-	// overdrive.SetDrive(0.0f);
-	
 	delay.SetDelay(sample_rate * 1.0f);
-	
 	tremolo.Init(sample_rate);
 	flanger.Init(sample_rate);
 	autowah.Init(sample_rate);
@@ -377,16 +397,15 @@ int main(void)
 	eq2.Init(sample_rate);
 	eq3.Init(sample_rate);
 	eq4.Init(sample_rate);
+	
+	// these probably aren't optimal but it's okay
 	eq1.SetFreq(200.0f);
 	eq2.SetFreq(500.0f);
-	eq3.SetFreq(2000.0f);
-	eq4.SetFreq(5000.0f);
+	eq3.SetFreq(1000.0f);
+	eq4.SetFreq(2000.0f);
 
 	metro.Init(1, sample_rate);
 	drum.Init(sample_rate);
-    // drum.SetFreq(50.f);
-	// drum.SetTone(0.0f);
-	// drum.SetDecay(0.0f);
 
     looper.Init(buf, MAX_SIZE);
 	if (sw4.RawState()) // up
